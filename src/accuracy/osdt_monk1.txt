@@ -1,0 +1,19 @@
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+NA;0.1;2.0;0.7338709677419355;NA;0.010014057159423828;0.008001565933227539;NA
+NA;0.05;5;0.9112903225806451;NA;0.21404552459716797;0.037014007568359375;[(1,), (-7, -2, -1), (-2, -1, 7), (-7, -1, 2), (-1, 2, 7)]
+NA;0.025;8;1.0;NA;28.183851718902588;0.1580352783203125;[(1,), (-10, -1, 9), (-9, -1, 10), (-1, 9, 10), (-10, -9, -7, -2, -1), (-10, -9, -2, -1, 7), (-10, -9, -7, -1, 2), (-10, -9, -1, 2, 7)]
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+NA;0.1;2.0;0.7338709677419355;NA;0.013002872467041016;0.01000213623046875;NA
+NA;0.05;5;0.9112903225806451;NA;0.3394653797149658;0.06502938270568848;[(1,), (-7, -2, -1), (-2, -1, 7), (-7, -1, 2), (-1, 2, 7)]
+NA;0.025;8;1.0;NA;48.88655924797058;0.2922546863555908;[(1,), (-10, -1, 9), (-9, -1, 10), (-1, 9, 10), (-10, -9, -7, -2, -1), (-10, -9, -2, -1, 7), (-10, -9, -7, -1, 2), (-10, -9, -1, 2, 7)]
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+NA;0.1;2.0;0.7338709677419355;NA;0.013005971908569336;0.010005474090576172;NA
+NA;0.05;5;0.9112903225806451;NA;0.3400862216949463;0.06602191925048828;[(1,), (-7, -2, -1), (-2, -1, 7), (-7, -1, 2), (-1, 2, 7)]
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
+fold;lamb;nleaves;trainaccu_OSDT;testaccu_OSDT;totaltime;time_c;leaves_c
