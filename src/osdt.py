@@ -25,7 +25,18 @@ class CacheTree:
 
     def __init__(self, lamb, leaves):
         self.leaves = leaves
-        self.risk = sum([l.loss for l in leaves]) + lamb * len(leaves)
+        self.rules = [l.rules for l in leaves]
+        rulelen = [len(val) for val in self.rules]
+        self.ext= sum(rulelen)
+        # for val in self.rules:
+        #     self.extpthlen += len(val)
+            # print(len(val))
+        # print("+++++++++++=================RRRUUULES==============+++:", self.rules)
+        # print("+++++++++++=================NNNNRRRUUULES==============+++:", self.ext)
+        # print("+++++++++++=================LEAVESLEN==============+++:", len(leaves))
+        # self.risk = sum([l.loss for l in leaves]) + lamb * len(leaves)
+        #External path length
+        self.risk = sum([l.loss for l in leaves]) + lamb * self.ext
 
     def sorted_leaves(self):
         # Used by the cache
@@ -89,9 +100,16 @@ class Tree:
 
         leaves = cache_tree.leaves
         l = len(leaves)
+        self.rules = [l.rules for l in leaves]
+        rulelen = [len(val) for val in self.rules]
+        self.ext = sum(rulelen)
 
+        # self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
+        #                if splitleaf[i] == 0]) + lamb * l
+
+        #External path length lb
         self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
-                       if splitleaf[i] == 0]) + lamb * l
+                       if splitleaf[i] == 0]) + lamb * self.ext
 
         # which metrics to use for the priority queue
         if leaves[0].num_captured == ndata:
@@ -465,6 +483,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
     # heapq.heappush(queue, (2*tree0.metric - R_c, tree0))
     # queue.append(tree0)
 
+    clf = None
     best_is_cart = False  # a flag for whether or not the best is the initial CART
     if init_cart: # if warm start
         # CART
@@ -564,6 +583,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         if lb + b0 + n_removed_leaves * lambbb >= R_c:
             continue
 
+        #dun
         leaf_no_split = [not split for split in leaf_split]
         unchanged_leaves = list(compress(leaves, leaf_no_split))
 
@@ -799,15 +819,15 @@ def predict(leaves_c, prediction_c, dic, x, y, best_is_cart, clf):
     :return:
     """
 
-    if best_is_cart:
-        #print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        yhat = clf.predict(x)
-        accu = clf.score(x, y)
-
-        #print("yhat~~~:", yhat)
-        #print("y~~~:", y)
-
-        return yhat, accu
+    # if best_is_cart:
+    #     #print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+    #     yhat = clf.predict(x)
+    #     accu = clf.score(x, y)
+    #
+    #     #print("yhat~~~:", yhat)
+    #     #print("y~~~:", y)
+    #
+    #     return yhat, accu
 
     ndata = x.shape[0]
 

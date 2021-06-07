@@ -30,12 +30,12 @@ tictactoe = pd.DataFrame(pd.read_csv('../data/preprocessed/tic-tac-toe.csv',sep=
 car = pd.DataFrame(pd.read_csv('../data/preprocessed/car-evaluation.csv',sep=";"))
 
 
-monk1feat = compas.iloc[:, :-1]
+# monk1feat = compas.iloc[:, :-1]
 #print(len(monk1feat.columns))
 #print(monk1feat.head(5))
-duplicateRowsDF = monk1feat[monk1feat.duplicated()]
-print("Duplicate Rows except first occurrence based on all columns are :")
-print(duplicateRowsDF)
+# duplicateRowsDF = monk1feat[monk1feat.duplicated()]
+# print("Duplicate Rows except first occurrence based on all columns are :")
+# print(duplicateRowsDF)
 
 #'../data/preprocessed/monk1-train.csv'
 def test_accuracy(file, lambs, file_CART, file_OSDT, timelimit=1800):
@@ -143,46 +143,56 @@ def test_accuracy_onefold(file, lambs, file_CART, file_OSDT, timelimit):
     :param file_OSDT:
     :return:
     """
-    with open(file_CART, 'a+') as f:
-        f.write(";".join(["fold", "lamb", "nleaves", "trainaccu_CART", "testaccu_CART"]) + '\n')
-    with open(file_OSDT, 'a+') as f:
-        f.write(";".join(["fold", "lamb", "nleaves", "trainaccu_OSDT", "testaccu_OSDT", "totaltime", "time_c", "leaves_c"]) + '\n')
+    # with open(file_CART, 'a+') as f:
+    #     f.write(";".join(["fold", "lamb", "nleaves", "trainaccu_CART", "testaccu_CART"]) + '\n')
+    # with open(file_OSDT, 'a+') as f:
+    #     f.write(";".join(["fold", "lamb", "nleaves", "trainaccu_OSDT", "testaccu_OSDT", "totaltime", "time_c", "leaves_c"]) + '\n')
     for lamb in lambs:
 
         file_train = file
+        #file_train = file + '.train' + str(1) + '.csv'
+        # file_test = file + '.test' + str(1) + '.csv'
 
         data_train = pd.DataFrame(pd.read_csv(file_train, sep=";"))
+        # data_test = pd.DataFrame(pd.read_csv(file_test, sep=";"))
 
         X_train = data_train.values[:, :-1]
         y_train = data_train.values[:, -1]
 
+        # X_test = data_test.values[:, :-1]
+        # y_test = data_test.values[:, -1]
+
         # CART
-        clf = tree.DecisionTreeClassifier(max_depth=5, min_samples_split=max(math.ceil(lamb * 2 * len(y_train)), 2),
-                                          min_samples_leaf=math.ceil(lamb * len(y_train)),
-                                          max_leaf_nodes=math.floor(1 / (2 * lamb)),
-                                          min_impurity_decrease=lamb
-                                          )
-        clf = clf.fit(X_train, y_train)
+        # clf = tree.DecisionTreeClassifier(max_depth=5, min_samples_split=max(math.ceil(lamb * 2 * len(y_train)), 2),
+        #                                   min_samples_leaf=math.ceil(lamb * len(y_train)),
+        #                                   max_leaf_nodes=math.floor(1 / (2 * lamb)),
+        #                                   min_impurity_decrease=lamb
+        #                                   )
+        # clf = clf.fit(X_train, y_train)
+        #
+        # nleaves_CART = (clf.tree_.node_count + 1) / 2
+        # trainaccu_CART = clf.score(X_train, y_train)
+        # testaccu_CART = clf.score(X_test, y_test)
+        # print(">>>>>>>>>>>>>>>>> nleaves_CART:", nleaves_CART)
+        # print(">>>>>>>>>>>>>>>>> trainaccu_CART:", trainaccu_CART)
+        # print(">>>>>>>>>>>>>>>>> testaccu_CART:", testaccu_CART)
 
-        nleaves_CART = (clf.tree_.node_count + 1) / 2
-        trainaccu_CART = clf.score(X_train, y_train)
-
-        with open(file_CART, 'a+') as f:
-            f.write(";".join([str('NA'), str(lamb), str(nleaves_CART), str(trainaccu_CART), str('NA')]) + '\n')
+        # with open(file_CART, 'a+') as f:
+        #     f.write(";".join([str('NA'), str(lamb), str(nleaves_CART), str(trainaccu_CART), str('NA')]) + '\n')
 
         # OSDT
         leaves_c, prediction_c, dic, nleaves_OSDT, nrule, ndata, totaltime, time_c, COUNT, C_c, trainaccu_OSDT, best_is_cart, clf =\
-            bbound(X_train, y_train, lamb=lamb,support=True, incre_support=True, accu_support=True, equiv_points=False,
-           lookahead=True, lenbound=True, prior_metric="curiosity", timelimit=timelimit, init_cart=True)
-        testaccu_OSDT = predict(leaves_c, prediction_c, dic, X_test, y_test, best_is_cart, clf)
+            bbound(X_train, y_train, lamb=lamb,support=False, incre_support=False, accu_support=False, equiv_points=False,
+           lookahead=False, lenbound=False, prior_metric="curiosity", timelimit=timelimit, init_cart=False)
 
-        print(">>>>>>>>>>>>>>>>> testaccu_CART:", testaccu_CART)
-        print(">>>>>>>>>>>>>>>>> testaccu_OSDT:", testaccu_OSDT)
+        # testaccu_OSDT = predict(leaves_c, prediction_c, dic, X_test, y_test, best_is_cart, clf)
 
-        with open(file_OSDT, 'a+') as f:
-            f.write(";".join(
-                [str('NA'), str(lamb), str(nleaves_OSDT), str(trainaccu_OSDT), str('NA'),
-                 str(totaltime), str(time_c), str(leaves_c)]) + '\n')
+       #print(">>>>>>>>>>>>>>>>> testaccu_OSDT:", testaccu_OSDT)
+
+        # with open(file_OSDT, 'a+') as f:
+        #     f.write(";".join(
+        #         [str('NA'), str(lamb), str(nleaves_OSDT), str(trainaccu_OSDT), str('NA'),
+        #          str(totaltime), str(time_c), str(leaves_c)]) + '\n')
 
         if nleaves_OSDT >= 16:
             break
@@ -209,9 +219,12 @@ timelimi1 = 1800
 # test_accuracy_onefold('../data/preprocessed/fico_binary.csv', lambs=[0.05, 0.005, 0.001, 0.00035],
 #                     file_CART=r'./accuracy/cart_fico.txt', file_OSDT=r'./accuracy/osdt_fico.txt', timelimit=timelimi1)
 
-test_accuracy_onefold('../data/preprocessed/monk1-train.csv', lambs=[0.1, 0.05, 0.025],
-                     file_CART=r'./accuracy/cart_monk1.txt', file_OSDT=r'./accuracy/osdt_monk1.txt', timelimit=timelimi1)
+# test_accuracy_onefold('../data/preprocessed/monk1-train.csv', lambs=[0.025],
+#                      file_CART=r'./accuracy/cart_monk1.txt', file_OSDT=r'./accuracy/osdt_monk1.txt', timelimit=timelimi1)
 
+test_accuracy_onefold('../data/preprocessed/playtennis.csv', lambs=[0.0025],
+                     file_CART=r'./accuracy/cart_monk1.txt', file_OSDT=r'./accuracy/osdt_monk1.txt', timelimit=timelimi1)
+#lambs=[0.1, 0.05, 0.025]
 # test_accuracy_onefold('../data/preprocessed/monk2-train.csv', lambs=[0.1, 0.025, 0.01, 0.005],
 #                     file_CART=r'./accuracy/cart_monk2.txt', file_OSDT=r'./accuracy/osdt_monk2.txt', timelimit=timelimi1)
 
