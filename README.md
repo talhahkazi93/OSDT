@@ -1,6 +1,6 @@
 # Optimal Sparse Decision Trees Revisited (OSDTR)
 This work uses an alternate approach to the work of ["Optimal Sparse Decision Trees"](https://arxiv.org/abs/1904.12847) by Xiyang Hu,
-Cynthia Rudin, and Margo Seltzer. and uses differnt objective function to find the optimal decision tree.
+Cynthia Rudin, and Margo Seltzer. We uses differnt objective function to find the optimal decision tree.
 
 ### Dependencies
 
