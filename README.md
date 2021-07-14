@@ -1,12 +1,6 @@
-# Optimal Sparse Decision Trees (OSDT)
-This accompanies the paper, ["Optimal Sparse Decision Trees"](https://arxiv.org/abs/1904.12847) by Xiyang Hu,
-Cynthia Rudin, and Margo Seltzer.
-
-It appeared in the [2019 NeurIPS conference](https://nips.cc/Conferences/2019)
-
-* [Overview video](https://youtu.be/UMjMQaH508M)
-* [NeurIPS poster](doc/OSDT_NIPS_Poster.pdf)
-* [NeurIPS slides](doc/NeurIPSSlides.pdf)
+# Optimal Sparse Decision Trees Revisited (OSDTR)
+This work uses an alternate approach to the work of ["Optimal Sparse Decision Trees"](https://arxiv.org/abs/1904.12847) by Xiyang Hu,
+Cynthia Rudin, and Margo Seltzer. and uses differnt objective function to find the optimal decision tree.
 
 ### Dependencies
 
