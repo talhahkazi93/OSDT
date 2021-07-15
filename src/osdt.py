@@ -36,9 +36,15 @@ class CacheTree:
         # print("+++++++++++=================LEAVESLEN==============+++:", len(leaves))
         if objfunc == "osdt":
             self.risk = sum([l.loss for l in leaves]) + lamb * len(leaves)
-        else:
+        elif objfunc == "extpl":
             #External path length
             self.risk = sum([l.loss for l in leaves]) + lamb * self.ext
+        elif objfunc == "intpl":
+            # Internal path length
+            intpl = self.ext - 2 * (len(leaves) - 1)
+            self.risk = sum([l.loss for l in leaves]) + lamb * intpl
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
 
     def sorted_leaves(self):
         # Used by the cache
@@ -109,10 +115,17 @@ class Tree:
         if objfunc == "osdt":
             self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
                            if splitleaf[i] == 0]) + lamb * l
-        else:
-        # #External path length lb
+        elif objfunc == "extpl":
+            # #External path length lb
             self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
                            if splitleaf[i] == 0]) + lamb * self.ext
+        elif objfunc == "intpl":
+            # Internal path length
+            intpl = self.ext - 2 * (l - 1)
+            self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + lamb * intpl
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
 
         # which metrics to use for the priority queue
         if leaves[0].num_captured == ndata:
@@ -203,9 +216,14 @@ class CacheLeaf:
                 # self.is_dead = self.num_captured / len(y) / 2 <= lamb
                 # Osdt leaf support
                 self.is_dead = self.loss <= lamb
-            else:
+            elif objfunc == "extpl":
                 #External path length support bound
-                self.is_dead = self.loss <= 2*lamb*(self.len + 2)
+                self.is_dead = self.loss <= 2 * lamb * (self.len + 2)
+            elif objfunc == "intpl":
+                # Internal path length
+                self.is_dead = self.loss <= 2 * lamb * (self.len)
+            else:
+                raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
         else:
             self.is_dead = 0
 
@@ -279,7 +297,7 @@ def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, lamb,
                 sl.append(splitleaf)
             else:
                 sl.append(splitleaf1)
-        else:
+        elif objfunc == "extpl":
             # External path length incremental support
             if a_l <= lamb * (new_leaves[i].len + 2):
                 splitleaf[n_unchanged_leaves + idx1] = 1
@@ -287,6 +305,16 @@ def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, lamb,
                 sl.append(splitleaf)
             else:
                 sl.append(splitleaf1)
+        elif objfunc == "intpl":
+            # Internal path length
+            if a_l <= lamb * new_leaves[i].len:
+                splitleaf[n_unchanged_leaves + idx1] = 1
+                splitleaf[n_unchanged_leaves + idx2] = 1
+                sl.append(splitleaf)
+            else:
+                sl.append(splitleaf1)
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
 
     return sl
 
@@ -609,14 +637,16 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         lb = tree.lb
         b0 = sum([leaf.B0 for leaf in removed_leaves]) if equiv_points else 0
         lambbb = lamb if lookahead else 0
-        if objfunc == "osdt":
+        if objfunc == "osdt" or objfunc == "intpl":
             if lb + b0 + n_removed_leaves * lambbb >= R_c:
                 continue
         # elif objfunc == "extpl":
-        else:
-            # External Path
+        elif objfunc == "extpl":
+            # External Path length
             if lb + b0 + n_removed_leaves * 2 * lambbb >= R_c:
                 continue
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
 
         #dun
         leaf_no_split = [not split for split in leaf_split]
@@ -685,19 +715,23 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
 
                     if objfunc == "osdt":
                         if accu_support == True and (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= lamb:
-
                             removed_leaf.is_feature_dead[rule_index] = 1
-
+                            flag_increm = True
+                            break
+                    elif objfunc == "extpl":
+                        #External path length
+                        if accu_support == True and (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= lamb * (new_leaf.len + 2):
+                            removed_leaf.is_feature_dead[rule_index] = 1
+                            flag_increm = True
+                            break
+                    elif objfunc == "intpl":
+                        #Internal path length
+                        if accu_support == True and (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= lamb * (new_leaf.len):
+                            removed_leaf.is_feature_dead[rule_index] = 1
                             flag_increm = True
                             break
                     else:
-                        #External path length
-                        if accu_support == True and (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= lamb * (new_leaf.len + 2):
-
-                            removed_leaf.is_feature_dead[rule_index] = 1
-
-                            flag_increm = True
-                            break
+                        raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
 
                 if flag_increm:
                     break
