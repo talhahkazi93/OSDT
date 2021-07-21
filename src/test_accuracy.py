@@ -33,7 +33,7 @@ car = pd.DataFrame(pd.read_csv('../data/preprocessed/car-evaluation.csv',sep=";"
 # monk1feat = compas.iloc[:, :-1]
 #print(len(monk1feat.columns))
 #print(monk1feat.head(5))
-# duplicateRowsDF = monk1feat[monk1feat.duplicated()]
+# duplicateRowsDF = monk1xfeat[monk1feat.duplicated()]
 # print("Duplicate Rows except first occurrence based on all columns are :")
 # print(duplicateRowsDF)
 
@@ -183,7 +183,7 @@ def test_accuracy_onefold(file, lambs, file_CART, file_OSDT, timelimit):
         # OSDT
         leaves_c, prediction_c, dic, nleaves_OSDT, nrule, ndata, totaltime, time_c, COUNT, C_c, trainaccu_OSDT, best_is_cart, clf =\
             bbound(X_train, y_train, lamb=lamb,support=True, incre_support=True, accu_support=True, equiv_points=True,
-           lookahead=True, lenbound=False, objfunc="osdt", prior_metric="curiosity", timelimit=timelimit, init_cart=False)
+           lookahead=True, lenbound=False, objfunc="extpl", prior_metric="curiosity", timelimit=timelimit, init_cart=False)
 
         # testaccu_OSDT = predict(leaves_c, prediction_c, dic, X_test, y_test, best_is_cart, clf)
 

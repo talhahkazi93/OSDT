@@ -16,6 +16,101 @@ from sklearn.metrics import accuracy_score
 import pickle
 
 
+class ObjectiveFunc:
+
+    def __init__(self,objfunc,lamb):
+        self.objfunc = objfunc
+        self.lamb = lamb
+
+    def calc_risk(self,leaves,ext):
+        if self.objfunc == "osdt":
+            risk = sum([l.loss for l in leaves]) + self.lamb * len(leaves)
+        elif self.objfunc == "extpl":
+            #External path length
+            risk = sum([l.loss for l in leaves]) + self.lamb * ext
+        elif self.objfunc == "intpl":
+            # Internal path length
+            intpl = self.ext - 2 * (len(leaves) - 1)
+            risk = sum([l.loss for l in leaves]) + self.lamb * intpl
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+
+        return risk
+
+    def calc_loss(self, cache_tree, splitleaf,l,ext):
+        if self.objfunc == "osdt":
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * l
+        elif self.objfunc == "extpl":
+            # #External path length lb
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * ext
+        elif self.objfunc == "intpl":
+            # Internal path length
+            intpl = self.ext - 2 * (l - 1)
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * intpl
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+
+        return lb
+
+    def calc_leaf_supp(self,loss,len):
+        if self.objfunc == "osdt":
+            # self.is_dead = self.num_captured / len(y) / 2 <= lamb
+            # Osdt leaf support
+            is_dead = loss <= self.lamb
+        elif self.objfunc == "extpl":
+            # External path length support bound
+            is_dead = loss <= 2 * self.lamb * (len + 2)
+        elif self.objfunc == "intpl":
+            # Internal path length
+            is_dead = loss <= 2 * self.lamb * (len)
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+
+        return is_dead
+
+    def calc_incrm_acc(self,new_leaves,i):
+
+        calcobj = None
+
+        if self.objfunc == "osdt":
+            calcobj = self.lamb
+        elif self.objfunc == "extpl":
+            # External path length incremental support
+            calcobj = self.lamb * (new_leaves[i].len + 2)
+        elif self.objfunc == "intpl":
+            # Internal path length
+            calcobj = self.lamb * (new_leaves[i].len)
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+
+        return calcobj
+
+    def calc_acc_supp(self,new_leaf,removed_leaf,ndata,rule_index):
+
+        validsupp = False
+
+        if self.objfunc == "osdt":
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb:
+                validsupp = True
+
+        elif self.objfunc == "extpl":
+            # External path length
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len + 2):
+                validsupp = True
+
+        elif self.objfunc == "intpl":
+            # Internal path length
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len):
+                validsupp = True
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+
+        return validsupp
+
+
 class CacheTree:
     """
     A tree data structure.
@@ -28,12 +123,6 @@ class CacheTree:
         self.rules = [l.rules for l in leaves]
         rulelen = [len(val) for val in self.rules]
         self.ext= sum(rulelen)
-        # for val in self.rules:
-        #     self.extpthlen += len(val)
-            # print(len(val))
-        # print("+++++++++++=================RRRUUULES==============+++:", self.rules)
-        # print("+++++++++++=================EPL==============+++:", self.ext)
-        # print("+++++++++++=================LEAVESLEN==============+++:", len(leaves))
         if objfunc == "osdt":
             self.risk = sum([l.loss for l in leaves]) + lamb * len(leaves)
         elif objfunc == "extpl":
@@ -49,7 +138,6 @@ class CacheTree:
     def sorted_leaves(self):
         # Used by the cache
         return tuple(sorted(leaf.rules for leaf in self.leaves))
-
 
 """
     def _to_nested_dict(self):
@@ -91,7 +179,6 @@ class CacheTree:
     def __str__(self):
         return self._format_dict(self._to_nested_dict())
 """
-
 
 class Tree:
     """
