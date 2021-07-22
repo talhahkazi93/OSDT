@@ -183,7 +183,7 @@ def test_accuracy_onefold(file, lambs, file_CART, file_OSDT, timelimit):
         # OSDT
         leaves_c, prediction_c, dic, nleaves_OSDT, nrule, ndata, totaltime, time_c, COUNT, C_c, trainaccu_OSDT, best_is_cart, clf =\
             bbound(X_train, y_train, lamb=lamb,support=True, incre_support=True, accu_support=True, equiv_points=True,
-           lookahead=True, lenbound=False, objfunc="osdt", prior_metric="curiosity", timelimit=timelimit, init_cart=False)
+           lookahead=True, lenbound=False, objfunc="intpl", prior_metric="curiosity", timelimit=timelimit, init_cart=False)
 
         # testaccu_OSDT = predict(leaves_c, prediction_c, dic, X_test, y_test, best_is_cart, clf)
 
@@ -219,11 +219,11 @@ timelimi1 = 1800
 # test_accuracy_onefold('../data/preprocessed/fico_binary.csv', lambs=[0.05, 0.005, 0.001, 0.00035],
 #                     file_CART=r'./accuracy/cart_fico.txt', file_OSDT=r'./accuracy/osdt_fico.txt', timelimit=timelimi1)
 
-# test_accuracy_onefold('../data/preprocessed/monk1-train.csv', lambs=[0.025],
-#                      file_CART=r'./accuracy/cart_monk1.txt', file_OSDT=r'./accuracy/osdt_monk1.txt', timelimit=timelimi1)
-
-test_accuracy_onefold('../data/preprocessed/playtennis.csv', lambs=[0.0001],
+test_accuracy_onefold('../data/preprocessed/monk1-train.csv', lambs=[0.005],
                      file_CART=r'./accuracy/cart_monk1.txt', file_OSDT=r'./accuracy/osdt_monk1.txt', timelimit=timelimi1)
+
+# test_accuracy_onefold('../data/preprocessed/playtennis.csv', lambs=[0.0001],
+#                      file_CART=r'./accuracy/cart_monk1.txt', file_OSDT=r'./accuracy/osdt_monk1.txt', timelimit=timelimi1)
 #lambs=[0.1, 0.05, 0.025]
 # test_accuracy_onefold('../data/preprocessed/monk2-train.csv', lambs=[0.1, 0.025, 0.01, 0.005],
 #                     file_CART=r'./accuracy/cart_monk2.txt', file_OSDT=r'./accuracy/osdt_monk2.txt', timelimit=timelimi1)

@@ -16,6 +16,106 @@ from sklearn.metrics import accuracy_score
 import pickle
 
 
+class ObjectiveFunc:
+
+    def __init__(self,objfunc,lamb):
+        if objfunc in ['osdt', 'extpl', 'intpl']:
+            self.objfunc = objfunc
+        else:
+            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+        self.lamb = lamb
+
+    def calc_lookahead(self,R_c,lb,b0,n_removed_leaves,lambbb):
+        lookahead = False
+
+        if self.objfunc == "osdt" or self.objfunc == "intpl":
+            if lb + b0 + n_removed_leaves * lambbb >= R_c:
+                lookahead = True
+        # elif objfunc == "extpl":
+        elif self.objfunc == "extpl":
+            # External Path length
+            if lb + b0 + n_removed_leaves * 2 * lambbb >= R_c:
+                lookahead = True
+
+        return lookahead
+
+    def calc_risk(self,leaves,ext):
+        if self.objfunc == "osdt":
+            risk = sum([l.loss for l in leaves]) + self.lamb * len(leaves)
+        elif self.objfunc == "extpl":
+            #External path length
+            risk = sum([l.loss for l in leaves]) + self.lamb * ext
+        elif self.objfunc == "intpl":
+            # Internal path length
+            intpl = ext - 2 * (len(leaves) - 1)
+            risk = sum([l.loss for l in leaves]) + self.lamb * intpl
+
+        return risk
+
+    def calc_loss(self, cache_tree, splitleaf,l,ext):
+        if self.objfunc == "osdt":
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * l
+        elif self.objfunc == "extpl":
+            # #External path length lb
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * ext
+        elif self.objfunc == "intpl":
+            # Internal path length
+            intpl = ext - 2 * (l - 1)
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * intpl
+
+        return lb
+
+    def calc_leaf_supp(self,loss,len):
+        if self.objfunc == "osdt":
+            # self.is_dead = self.num_captured / len(y) / 2 <= lamb
+            # Osdt leaf support
+            is_dead = loss <= self.lamb
+        elif self.objfunc == "extpl":
+            # External path length support bound
+            is_dead = loss <= 2 * self.lamb * (len + 2)
+        elif self.objfunc == "intpl":
+            # Internal path length
+            is_dead = loss <= 2 * self.lamb * (len)
+
+        return is_dead
+
+    def calc_incrm_acc(self,new_leaves,i):
+
+        if self.objfunc == "osdt":
+            calcobj = self.lamb
+        elif self.objfunc == "extpl":
+            # External path length incremental support
+            calcobj = self.lamb * (new_leaves[i].len + 2)
+        elif self.objfunc == "intpl":
+            # Internal path length
+            calcobj = self.lamb * (new_leaves[i].len)
+
+        return calcobj
+
+    def calc_acc_supp(self,new_leaf,ndata):
+
+        validsupp = False
+
+        if self.objfunc == "osdt":
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb:
+                validsupp = True
+
+        elif self.objfunc == "extpl":
+            # External path length
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len + 2):
+                validsupp = True
+
+        elif self.objfunc == "intpl":
+            # Internal path length
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len):
+                validsupp = True
+
+        return validsupp
+
+
 class CacheTree:
     """
     A tree data structure.
@@ -23,28 +123,13 @@ class CacheTree:
     num_captured: a list to record number of data captured by the leaves
     """
 
-    def __init__(self, lamb, leaves, objfunc):
+    def __init__(self, leaves, obj):
         self.leaves = leaves
         self.rules = [l.rules for l in leaves]
         rulelen = [len(val) for val in self.rules]
         self.ext= sum(rulelen)
-        # for val in self.rules:
-        #     self.extpthlen += len(val)
-            # print(len(val))
-        # print("+++++++++++=================RRRUUULES==============+++:", self.rules)
-        # print("+++++++++++=================EPL==============+++:", self.ext)
-        # print("+++++++++++=================LEAVESLEN==============+++:", len(leaves))
-        if objfunc == "osdt":
-            self.risk = sum([l.loss for l in leaves]) + lamb * len(leaves)
-        elif objfunc == "extpl":
-            #External path length
-            self.risk = sum([l.loss for l in leaves]) + lamb * self.ext
-        elif objfunc == "intpl":
-            # Internal path length
-            intpl = self.ext - 2 * (len(leaves) - 1)
-            self.risk = sum([l.loss for l in leaves]) + lamb * intpl
-        else:
-            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+
+        self.risk = obj.calc_risk(leaves=self.leaves,ext=self.ext)
 
     def sorted_leaves(self):
         # Used by the cache
@@ -92,7 +177,6 @@ class CacheTree:
         return self._format_dict(self._to_nested_dict())
 """
 
-
 class Tree:
     """
         A tree data structure, based on CacheTree
@@ -100,7 +184,7 @@ class Tree:
         num_captured: a list to record number of data captured by the leaves
         """
 
-    def __init__(self, cache_tree, ndata, lamb, splitleaf=None, prior_metric=None, objfunc=None):
+    def __init__(self, cache_tree, ndata, splitleaf=None, prior_metric=None, obj=None):
         self.cache_tree = cache_tree
         # a queue of lists indicating which leaves will be split in next rounds
         # (1 for split, 0 for not split)
@@ -112,20 +196,7 @@ class Tree:
         rulelen = [len(val) for val in self.rules]
         self.ext = sum(rulelen)
 
-        if objfunc == "osdt":
-            self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
-                           if splitleaf[i] == 0]) + lamb * l
-        elif objfunc == "extpl":
-            # #External path length lb
-            self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
-                           if splitleaf[i] == 0]) + lamb * self.ext
-        elif objfunc == "intpl":
-            # Internal path length
-            intpl = self.ext - 2 * (l - 1)
-            self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
-                           if splitleaf[i] == 0]) + lamb * intpl
-        else:
-            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+        self.lb = obj.calc_loss(cache_tree=cache_tree,splitleaf=splitleaf,l=l,ext=self.ext)
 
         # which metrics to use for the priority queue
         if leaves[0].num_captured == ndata:
@@ -178,7 +249,7 @@ class CacheLeaf:
     A data structure to cache every single leaf (symmetry aware)
     """
 
-    def __init__(self, ndata, rules, y_mpz, z_mpz, points_cap, num_captured, lamb, support, is_feature_dead, objfunc):
+    def __init__(self, ndata, rules, y_mpz, z_mpz, points_cap, num_captured, support, is_feature_dead, obj):
         self.rules = rules
         self.points_cap = points_cap
         self.num_captured = num_captured
@@ -212,18 +283,7 @@ class CacheLeaf:
 
         # Lower bound on leaf support
         if support:
-            if objfunc == "osdt":
-                # self.is_dead = self.num_captured / len(y) / 2 <= lamb
-                # Osdt leaf support
-                self.is_dead = self.loss <= lamb
-            elif objfunc == "extpl":
-                #External path length support bound
-                self.is_dead = self.loss <= 2 * lamb * (self.len + 2)
-            elif objfunc == "intpl":
-                # Internal path length
-                self.is_dead = self.loss <= 2 * lamb * (self.len)
-            else:
-                raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+            self.is_dead = obj.calc_leaf_supp(len=self.len,loss=self.loss)
         else:
             self.is_dead = 0
 
@@ -262,8 +322,8 @@ def log(tic, lines, COUNT_POP, COUNT, queue, metric, R_c, tree_old, tree_new, so
     lines.append(line)
 
 
-def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, lamb,
-                           R_c, incre_support, objfunc):
+def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves,
+                           R_c, incre_support, obj):
     """
     generate the new splitleaf for the new tree
     """
@@ -290,31 +350,12 @@ def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, lamb,
         if not incre_support:
             a_l = float('Inf')
 
-        if objfunc == "osdt":
-            if a_l <= lamb:
-                splitleaf[n_unchanged_leaves + idx1] = 1
-                splitleaf[n_unchanged_leaves + idx2] = 1
-                sl.append(splitleaf)
-            else:
-                sl.append(splitleaf1)
-        elif objfunc == "extpl":
-            # External path length incremental support
-            if a_l <= lamb * (new_leaves[i].len + 2):
-                splitleaf[n_unchanged_leaves + idx1] = 1
-                splitleaf[n_unchanged_leaves + idx2] = 1
-                sl.append(splitleaf)
-            else:
-                sl.append(splitleaf1)
-        elif objfunc == "intpl":
-            # Internal path length
-            if a_l <= lamb * new_leaves[i].len:
-                splitleaf[n_unchanged_leaves + idx1] = 1
-                splitleaf[n_unchanged_leaves + idx2] = 1
-                sl.append(splitleaf)
-            else:
-                sl.append(splitleaf1)
+        if a_l <= obj.calc_incrm_acc(new_leaves=new_leaves,i=i):
+            splitleaf[n_unchanged_leaves + idx1] = 1
+            splitleaf[n_unchanged_leaves + idx2] = 1
+            sl.append(splitleaf)
         else:
-            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+            sl.append(splitleaf1)
 
     return sl
 
@@ -515,15 +556,17 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
     leaf_cache = {}  # cache leaves
     tree_cache = {}  # cache trees
 
+    # Intinalizing opjective function
+    obj = ObjectiveFunc(objfunc=objfunc,lamb=lamb)
+
     # initialize the queue to include just empty root
     queue = []
-    root_leaf = CacheLeaf(ndata, (), y_mpz, z_mpz, make_all_ones(ndata + 1), ndata, lamb, support, [0] * nrule, objfunc=objfunc)
+    root_leaf = CacheLeaf(ndata, (), y_mpz, z_mpz, make_all_ones(ndata + 1), ndata, support, [0] * nrule, obj=obj)
 
-    d_c = CacheTree(leaves=[root_leaf], lamb=lamb, objfunc=objfunc)
+    d_c = CacheTree(leaves=[root_leaf], obj=obj)
     R_c = d_c.risk
 
-    tree0 = Tree(cache_tree=d_c, lamb=lamb,
-                 ndata=ndata, splitleaf=[1], prior_metric=prior_metric, objfunc=objfunc)
+    tree0 = Tree(cache_tree=d_c, ndata=ndata, splitleaf=[1], prior_metric=prior_metric, obj=obj)
 
     heapq.heappush(queue, (tree0.metric, tree0))
     # heapq.heappush(queue, (2*tree0.metric - R_c, tree0))
@@ -564,8 +607,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         sorted_new_tree_rules = tuple(sorted(leaf.rules for leaf in d_c.leaves))
         tree_cache[sorted_new_tree_rules] = True
 
-        tree_p = Tree(cache_tree=d_c, lamb=lamb,
-                     ndata=ndata, splitleaf=[1]*len(d_c.leaves), prior_metric=prior_metric , objfunc=objfunc)
+        tree_p = Tree(cache_tree=d_c, ndata=ndata, splitleaf=[1]*len(d_c.leaves), prior_metric=prior_metric , obj=obj)
 
         heapq.heappush(queue, (tree_p.metric, tree_p))
         print("PICKEL>>>>>>>>>>>>>", [leaf.rules for leaf in d_c.leaves])
@@ -637,16 +679,9 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         lb = tree.lb
         b0 = sum([leaf.B0 for leaf in removed_leaves]) if equiv_points else 0
         lambbb = lamb if lookahead else 0
-        if objfunc == "osdt" or objfunc == "intpl":
-            if lb + b0 + n_removed_leaves * lambbb >= R_c:
-                continue
-        # elif objfunc == "extpl":
-        elif objfunc == "extpl":
-            # External Path length
-            if lb + b0 + n_removed_leaves * 2 * lambbb >= R_c:
-                continue
-        else:
-            raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+
+        if obj.calc_lookahead(R_c=R_c,lb=lb,b0=b0,n_removed_leaves=n_removed_leaves,lambbb=lambbb):
+            continue
 
         #dun
         leaf_no_split = [not split for split in leaf_split]
@@ -692,7 +727,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
 
                         #parent_is_feature_dead =
                         new_leaf = CacheLeaf(ndata, new_rules, y_mpz, z_mpz, new_points_cap, new_num_captured,
-                                             lamb, support, removed_leaf.is_feature_dead.copy(), objfunc)
+                                             support, removed_leaf.is_feature_dead.copy(), obj)
                         leaf_cache[new_rules] = new_leaf
                         new_leaves.append(new_leaf)
                     else:
@@ -711,27 +746,10 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
                     # print("******* new_rules:", new_rules)
 
                     # Lower bound on classification accuracy
-                    # if (new_leaf.num_captured) / ndata <= lamb:
-
-                    if objfunc == "osdt":
-                        if accu_support == True and (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= lamb:
-                            removed_leaf.is_feature_dead[rule_index] = 1
-                            flag_increm = True
-                            break
-                    elif objfunc == "extpl":
-                        #External path length
-                        if accu_support == True and (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= lamb * (new_leaf.len + 2):
-                            removed_leaf.is_feature_dead[rule_index] = 1
-                            flag_increm = True
-                            break
-                    elif objfunc == "intpl":
-                        #Internal path length
-                        if accu_support == True and (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= lamb * (new_leaf.len):
-                            removed_leaf.is_feature_dead[rule_index] = 1
-                            flag_increm = True
-                            break
-                    else:
-                        raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+                    if accu_support == True and obj.calc_acc_supp(new_leaf=new_leaf,ndata=ndata):
+                        removed_leaf.is_feature_dead[rule_index] = 1
+                        flag_increm = True
+                        break
 
                 if flag_increm:
                     break
@@ -750,7 +768,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
             else:
                 tree_cache[sorted_new_tree_rules] = True
 
-            child = CacheTree(leaves=new_tree_leaves, lamb=lamb, objfunc=objfunc)
+            child = CacheTree(leaves=new_tree_leaves, obj=obj)
 
             R = child.risk
             # print("child:", child.sorted_leaves())
@@ -764,8 +782,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
                 best_is_cart = False
 
             # generate the new splitleaf for the new tree
-            sl = generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves,
-                                        lamb, R_c, incre_support, objfunc)
+            sl = generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, R_c, incre_support, obj)
             # print("sl:", sl)
 
             # A leaf cannot be split if
@@ -804,8 +821,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
 
             for new_leaf_split in new_leaf_splits:
                 # construct the new tree
-                tree_new = Tree(cache_tree=child, ndata=ndata, lamb=lamb,
-                                splitleaf=new_leaf_split, prior_metric=prior_metric, objfunc=objfunc)
+                tree_new = Tree(cache_tree=child, ndata=ndata, splitleaf=new_leaf_split, prior_metric=prior_metric, obj=obj)
 
                 # MAX Number of leaves
                 if len(new_leaf_split)+sum(new_leaf_split) > MAX_NLEAVES:
