@@ -105,7 +105,7 @@ class ObjectiveFunc:
 
         elif self.objfunc == "extpl":
             # External path length
-            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len + 2):
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len + 1):
                 validsupp = True
 
         elif self.objfunc == "intpl":
