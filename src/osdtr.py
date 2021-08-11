@@ -3,17 +3,114 @@ import pandas as pd
 import heapq
 import math
 import time
-
 import copy
-
 from itertools import product, compress
 from gmpy2 import mpz
-from rule import make_all_ones, make_zeros, rule_vand, rule_vandnot, rule_vectompz, rule_mpztovec, count_ones
-
+from utils import ObjFunction
+from utils import RulesFunctions as rulef
 import sklearn.tree
-from sklearn.metrics import accuracy_score
-
 import pickle
+
+
+class ObjectiveFunc:
+
+    def __init__(self,objfunc,lamb):
+        # if objfunc in ['osdt', 'extpl', 'intpl']:
+        #     self.objfunc = objfunc
+        # else:
+        #     raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
+        self.objfunc = objfunc
+        self.lamb = lamb
+
+    def calc_lookahead(self,R_c,lb,b0,n_removed_leaves,lambbb):
+        lookahead = False
+
+        if self.objfunc == ObjFunction.OSDT or self.objfunc == ObjFunction.InternalPathLength:
+            if lb + b0 + n_removed_leaves * lambbb >= R_c:
+                lookahead = True
+        # elif objfunc == "extpl":
+        elif self.objfunc == ObjFunction.ExternalPathLength:
+            # External Path length
+            if lb + b0 + n_removed_leaves * 2 * lambbb >= R_c:
+                lookahead = True
+
+        return lookahead
+
+    def calc_risk(self,leaves,ext):
+        if self.objfunc == ObjFunction.OSDT:
+            risk = sum([l.loss for l in leaves]) + self.lamb * len(leaves)
+        elif self.objfunc == ObjFunction.ExternalPathLength:
+            #External path length
+            risk = sum([l.loss for l in leaves]) + self.lamb * ext
+        elif self.objfunc == ObjFunction.InternalPathLength:
+            # Internal path length
+            intpl = ext - 2 * (len(leaves) - 1)
+            risk = sum([l.loss for l in leaves]) + self.lamb * intpl
+
+        return risk
+
+    def calc_loss(self, cache_tree, splitleaf,l,ext):
+        if self.objfunc == ObjFunction.OSDT:
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * l
+        elif self.objfunc == ObjFunction.ExternalPathLength:
+            # #External path length lb
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * ext
+        elif self.objfunc == ObjFunction.InternalPathLength:
+            # Internal path length
+            intpl = ext - 2 * (l - 1)
+            lb = sum([cache_tree.leaves[i].loss for i in range(l)
+                           if splitleaf[i] == 0]) + self.lamb * intpl
+
+        return lb
+
+    def calc_leaf_supp(self,loss,len):
+        if self.objfunc == ObjFunction.OSDT:
+            # self.is_dead = self.num_captured / len(y) / 2 <= lamb
+            # Osdt leaf support
+            is_dead = loss <= self.lamb
+        elif self.objfunc == ObjFunction.ExternalPathLength:
+            # External path length support bound
+            is_dead = loss <= 2 * self.lamb * (len + 2)
+        elif self.objfunc == ObjFunction.InternalPathLength:
+            # Internal path length
+            is_dead = loss <= 2 * self.lamb * (len)
+
+        return is_dead
+
+    def calc_incrm_acc(self,new_leaves,i):
+
+        if self.objfunc == ObjFunction.OSDT:
+            calcobj = self.lamb
+        elif self.objfunc == ObjFunction.ExternalPathLength:
+            # External path length incremental support
+            calcobj = self.lamb * (new_leaves[i].len + 2)
+        elif self.objfunc == ObjFunction.InternalPathLength:
+            # Internal path length
+            calcobj = self.lamb * (new_leaves[i].len)
+
+        return calcobj
+
+    def calc_acc_supp(self,new_leaf,ndata):
+
+        validsupp = False
+
+        if self.objfunc == ObjFunction.OSDT:
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb:
+                validsupp = True
+
+        elif self.objfunc == ObjFunction.ExternalPathLength:
+            # External path length
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len + 1):
+                validsupp = True
+
+        elif self.objfunc == ObjFunction.InternalPathLength:
+            # Internal path length
+            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len):
+                validsupp = True
+
+        return validsupp
 
 
 class CacheTree:
@@ -23,55 +120,17 @@ class CacheTree:
     num_captured: a list to record number of data captured by the leaves
     """
 
-    def __init__(self, lamb, leaves):
+    def __init__(self, leaves, obj):
         self.leaves = leaves
-        self.risk = sum([l.loss for l in leaves]) + lamb * len(leaves)
+        self.rules = [l.rules for l in leaves]
+        rulelen = [len(val) for val in self.rules]
+        self.ext= sum(rulelen)
+
+        self.risk = obj.calc_risk(leaves=self.leaves,ext=self.ext)
 
     def sorted_leaves(self):
         # Used by the cache
         return tuple(sorted(leaf.rules for leaf in self.leaves))
-
-
-"""
-    def _to_nested_dict(self):
-        tree = {}
-
-        for i, leaf in enumerate(self.leaves):
-            current_node = tree
-
-            for rule in leaf:
-                current_node['rule'] = abs(rule)
-                direction = 'left' if rule < 0 else 'right'
-                if direction not in current_node:
-                    current_node[direction] = {}
-                current_node = current_node[direction]
-
-            current_node['label'] = self.leaves[i].prediction
-
-        return tree
-
-    def _format_dict(self, tree, depth=0):
-        fmt = '-' * depth
-
-        if 'rule' in tree:
-            fmt += 'r{}'.format(tree['rule'])
-        else:
-            assert 'label' in tree
-            fmt += str(tree['label'])
-
-        fmt += '\n'
-
-        if 'left' in tree:
-            fmt += self._format_dict(tree['left'], depth + 1)
-
-        if 'right' in tree:
-            fmt += self._format_dict(tree['right'], depth + 1)
-
-        return fmt
-
-    def __str__(self):
-        return self._format_dict(self._to_nested_dict())
-"""
 
 
 class Tree:
@@ -81,7 +140,7 @@ class Tree:
         num_captured: a list to record number of data captured by the leaves
         """
 
-    def __init__(self, cache_tree, ndata, lamb, splitleaf=None, prior_metric=None):
+    def __init__(self, cache_tree, ndata, splitleaf=None, prior_metric=None, obj=None):
         self.cache_tree = cache_tree
         # a queue of lists indicating which leaves will be split in next rounds
         # (1 for split, 0 for not split)
@@ -89,9 +148,11 @@ class Tree:
 
         leaves = cache_tree.leaves
         l = len(leaves)
+        self.rules = [l.rules for l in leaves]
+        rulelen = [len(val) for val in self.rules]
+        self.ext = sum(rulelen)
 
-        self.lb = sum([cache_tree.leaves[i].loss for i in range(l)
-                       if splitleaf[i] == 0]) + lamb * l
+        self.lb = obj.calc_loss(cache_tree=cache_tree,splitleaf=splitleaf,l=l,ext=self.ext)
 
         # which metrics to use for the priority queue
         if leaves[0].num_captured == ndata:
@@ -144,21 +205,18 @@ class CacheLeaf:
     A data structure to cache every single leaf (symmetry aware)
     """
 
-    def __init__(self, ndata, rules, y_mpz, z_mpz, points_cap, num_captured, lamb, support, is_feature_dead):
+    def __init__(self, ndata, rules, y_mpz, z_mpz, points_cap, num_captured, support, is_feature_dead, obj):
         self.rules = rules
         self.points_cap = points_cap
         self.num_captured = num_captured
         self.is_feature_dead = is_feature_dead
+        self.len = len(rules)
 
-        # the y's of these data captured by leaf antecedent[0]
-        # y_leaf = y[tag]
-        # print("tag",tag)
-        # print("y",y)
-        _, num_ones = rule_vand(points_cap, y_mpz)
+        _, num_ones = rulef.rule_vand(points_cap, y_mpz)
 
         # b0 is defined in (28)
 
-        _, num_errors = rule_vand(points_cap, z_mpz)
+        _, num_errors = rulef.rule_vand(points_cap, z_mpz)
         self.B0 = num_errors / ndata
 
         if self.num_captured:
@@ -177,8 +235,7 @@ class CacheLeaf:
 
         # Lower bound on leaf support
         if support:
-            # self.is_dead = self.num_captured / len(y) / 2 <= lamb
-            self.is_dead = self.loss <= lamb
+            self.is_dead = obj.calc_leaf_supp(len=self.len,loss=self.loss)
         else:
             self.is_dead = 0
 
@@ -217,8 +274,8 @@ def log(tic, lines, COUNT_POP, COUNT, queue, metric, R_c, tree_old, tree_new, so
     lines.append(line)
 
 
-def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, lamb,
-                           R_c, incre_support):
+def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves,
+                           R_c, incre_support, obj):
     """
     generate the new splitleaf for the new tree
     """
@@ -245,7 +302,7 @@ def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, lamb,
         if not incre_support:
             a_l = float('Inf')
 
-        if a_l <= lamb:
+        if a_l <= obj.calc_incrm_acc(new_leaves=new_leaves,i=i):
             splitleaf[n_unchanged_leaves + idx1] = 1
             splitleaf[n_unchanged_leaves + idx2] = 1
             sl.append(splitleaf)
@@ -254,38 +311,6 @@ def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, lamb,
 
     return sl
 
-'''
-def gini_reduction(x, y, ndata, nrule):
-    """
-    calculate the gini reduction by each feature
-    return the rank of by descending
-    """
-
-    p0 = sum(y == 1) / ndata
-    gini0 = 2 * p0 * (1 - p0)
-
-    gr = []
-    for i in range(nrule):
-        xi = x[:, i]
-        y1 = y[xi == 0]
-        y2 = y[xi == 1]
-        ndata1 = len(y1)
-        ndata2 = len(y2)
-        p1 = sum(y1 == 1) / ndata1 if ndata1 != 0 else 0
-        p2 = sum(y2 == 1) / ndata2 if ndata2 != 0 else 0
-        gini1 = 2 * p1 * (1 - p1)
-        gini2 = 2 * p2 * (1 - p2)
-        gini_red = gini0 - ndata1 / ndata * gini1 - ndata2 / ndata * gini2
-        gr.append(gini_red)
-
-    gr = pd.Series(gr)
-    rk = list(map(lambda x: int(x) - 1, list(gr.rank(method='first'))[::-1]))
-
-    print("the rank of x's columns: ", rk)
-    return rk
-'''
-
-
 def gini_reduction(x_mpz, y_mpz, ndata, rule_idx, points_cap=None):
     """
     calculate the gini reduction by each feature
@@ -293,10 +318,10 @@ def gini_reduction(x_mpz, y_mpz, ndata, rule_idx, points_cap=None):
     """
 
     if points_cap == None:
-        points_cap = make_all_ones(ndata + 1)
+        points_cap = rulef.make_all_ones(ndata + 1)
 
-    ndata0 = count_ones(points_cap)
-    _, ndata01 = rule_vand(y_mpz, points_cap)
+    ndata0 = rulef.count_ones(points_cap)
+    _, ndata01 = rulef.rule_vand(y_mpz, points_cap)
 
     p0 = ndata01 / ndata0
     gini0 = 2 * p0 * (1 - p0)
@@ -304,13 +329,13 @@ def gini_reduction(x_mpz, y_mpz, ndata, rule_idx, points_cap=None):
     gr = []
     for i in rule_idx:
         xi = x_mpz[i]
-        l1_cap, ndata1 = rule_vand(points_cap, ~xi | mpz(pow(2, ndata)))
+        l1_cap, ndata1 = rulef.rule_vand(points_cap, ~xi | mpz(pow(2, ndata)))
 
-        _, ndata11 = rule_vand(l1_cap, y_mpz)
+        _, ndata11 = rulef.rule_vand(l1_cap, y_mpz)
 
-        l2_cap, ndata2 = rule_vand(points_cap, xi)
+        l2_cap, ndata2 = rulef.rule_vand(points_cap, xi)
 
-        _, ndata21 = rule_vand(l2_cap, y_mpz)
+        _, ndata21 = rulef.rule_vand(l2_cap, y_mpz)
 
         p1 = ndata11 / ndata1 if ndata1 != 0 else 0
         p2 = ndata21 / ndata2 if ndata2 != 0 else 0
@@ -327,9 +352,9 @@ def gini_reduction(x_mpz, y_mpz, ndata, rule_idx, points_cap=None):
     #print("ndata0:", ndata0)
     #print("ndata1:", ndata1)
     #print("ndata2:", ndata2)
-    print("gr:", gr)
-    print("order:", order)
-    print("odr:", odr)
+    # print("gr:", gr)
+    # print("order:", order)
+    # print("odr:", odr)
     #print("the rank of x's columns: ", rank)
 
     dic = dict(zip(np.array(rule_idx)+1, odr))
@@ -337,56 +362,9 @@ def gini_reduction(x_mpz, y_mpz, ndata, rule_idx, points_cap=None):
     return odr, dic
 
 
-def get_code(tree, feature_names, target_names, spacer_base="    "):
-    """Produce psuedo-code for scikit-leant DescisionTree.
-
-        Args
-        ----
-        tree -- scikit-leant DescisionTree.
-        feature_names -- list of feature names.
-        target_names -- list of target (class) names.
-        spacer_base -- used for spacing code (default: "    ").
-
-        Notes
-        -----
-        based on http://stackoverflow.com/a/30104792.
-        http://chrisstrelioff.ws/sandbox/2015/06/08/decision_trees_in_python_with_scikit_learn_and_pandas.html
-        """
-    #tree  # = dt
-    #feature_names   #= features
-    #target_names   #= targets
-
-    left = tree.tree_.children_left
-    right = tree.tree_.children_right
-    threshold = tree.tree_.threshold
-    feats = [feature_names[i] for i in tree.tree_.feature]
-    value = tree.tree_.value
-
-    def recurse(left, right, threshold, features, node, depth):
-        spacer = spacer_base * depth
-        if (threshold[node] != -2):
-            print((spacer + "if ( " + feats[node] + " <= " + str(threshold[node]) + " ) {"))
-            if left[node] != -1:
-                recurse(left, right, threshold, feats, left[node], depth + 1)
-            print((spacer + "}\n" + spacer + "else {"))
-            if right[node] != -1:
-                recurse(left, right, threshold, feats, right[node], depth + 1)
-            print((spacer + "}"))
-        else:
-            target = value[node]
-            print((spacer + "return " + str(target)))
-            for i, v in zip(np.nonzero(target)[1], target[np.nonzero(target)]):
-                target_name = target_names[i]
-                target_count = int(v)
-                print((spacer + "return " + str(target_name) + " " + str(i) + " " \
-                                                                              " ( " + str(
-                    target_count) + " examples )"))
-
-    recurse(left, right, threshold, feature_names, 0, 0)
-
 def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=float('Inf'), niter=float('Inf'), logon=False,
            support=True, incre_support=True, accu_support=True, equiv_points=True,
-           lookahead=True, lenbound=True, R_c0 = 1, timelimit=float('Inf'), init_cart = True,
+           lookahead=True, lenbound=True, objfunc=ObjFunction.ExternalPathLength, R_c0 = 1, timelimit=float('Inf'), init_cart = True,
            saveTree = False, readTree = False):
     """
     An implementation of Algorithm
@@ -409,8 +387,8 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
     print("nrule:", nrule)
     print("ndata:", ndata)
 
-    x_mpz = [rule_vectompz(x[:, i]) for i in range(nrule)]
-    y_mpz = rule_vectompz(y)
+    x_mpz = [rulef.rule_vectompz(x[:, i]) for i in range(nrule)]
+    y_mpz = rulef.rule_vectompz(y)
     #print("x_mpz000",x_mpz)
     #print("y_mpz000", y_mpz)
 
@@ -444,27 +422,30 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
             tag2 = (y_l != pred)
             z[tag1, 0] = tag2
 
-    z_mpz = rule_vectompz(z.reshape(1, -1)[0])
+    z_mpz = rulef.rule_vectompz(z.reshape(1, -1)[0])
 
 
     lines = []  # a list for log
     leaf_cache = {}  # cache leaves
     tree_cache = {}  # cache trees
 
+    # Intinalizing opjective function
+    obj = ObjectiveFunc(objfunc=objfunc,lamb=lamb)
+
     # initialize the queue to include just empty root
     queue = []
-    root_leaf = CacheLeaf(ndata, (), y_mpz, z_mpz, make_all_ones(ndata + 1), ndata, lamb, support, [0] * nrule)
+    root_leaf = CacheLeaf(ndata, (), y_mpz, z_mpz, rulef.make_all_ones(ndata + 1), ndata, support, [0] * nrule, obj=obj)
 
-    d_c = CacheTree(leaves=[root_leaf], lamb=lamb)
+    d_c = CacheTree(leaves=[root_leaf], obj=obj)
     R_c = d_c.risk
 
-    tree0 = Tree(cache_tree=d_c, lamb=lamb,
-                 ndata=ndata, splitleaf=[1], prior_metric=prior_metric)
+    tree0 = Tree(cache_tree=d_c, ndata=ndata, splitleaf=[1], prior_metric=prior_metric, obj=obj)
 
     heapq.heappush(queue, (tree0.metric, tree0))
     # heapq.heappush(queue, (2*tree0.metric - R_c, tree0))
     # queue.append(tree0)
 
+    clf = None
     best_is_cart = False  # a flag for whether or not the best is the initial CART
     if init_cart: # if warm start
         # CART
@@ -487,28 +468,6 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
 
         best_is_cart = True
 
-    # read Tree from the preserved one, and only explore the children of the preserved one
-    if readTree:
-        with open('tree.pkl', 'rb') as f:
-            d_c = pickle.load(f)
-        R_c = d_c.risk
-
-        with open('leaf_cache.pkl', 'rb') as f:
-            leaf_cache = pickle.load(f)
-
-        sorted_new_tree_rules = tuple(sorted(leaf.rules for leaf in d_c.leaves))
-        tree_cache[sorted_new_tree_rules] = True
-
-        tree_p = Tree(cache_tree=d_c, lamb=lamb,
-                     ndata=ndata, splitleaf=[1]*len(d_c.leaves), prior_metric=prior_metric)
-
-        heapq.heappush(queue, (tree_p.metric, tree_p))
-        print("PICKEL>>>>>>>>>>>>>", [leaf.rules for leaf in d_c.leaves])
-        #print("leaf_cache:", leaf_cache)
-
-        C_c = 0
-        time_c = time.time() - tic
-
     if R_c0 < R_c:
         R_c = R_c0
 
@@ -522,11 +481,22 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
 
     COUNT_UNIQLEAVES = 0
     COUNT_LEAFLOOKUPS = 0
+    # timelimit = float('Inf')
+    # last = None
 
     while queue and COUNT < niter and time.time() - tic < timelimit:
+        # for a in queue:
+        #     print("QUEUE MEMBERS++++++",a)
+        #     print("ALL THE LEAVES=====", [leaf.rules for leaf in a[1].cache_tree.leaves])
+        #     print("WHICH NODE TO BE SPLIT",[c for c in a[1].splitleaf])
+        #     last = a
         # tree = queue.pop(0)
+        # metric, tree = last
         metric, tree = heapq.heappop(queue)
 
+
+
+        # ATEMP_LEAVES = [leaf.rules for leaf in d_c.leaves]
         '''
         if prior_metric == "bound":
             if tree.lb + lamb*len(tree.splitleaf) >= R_c:
@@ -561,9 +531,11 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         lb = tree.lb
         b0 = sum([leaf.B0 for leaf in removed_leaves]) if equiv_points else 0
         lambbb = lamb if lookahead else 0
-        if lb + b0 + n_removed_leaves * lambbb >= R_c:
+
+        if obj.calc_lookahead(R_c=R_c,lb=lb,b0=b0,n_removed_leaves=n_removed_leaves,lambbb=lambbb):
             continue
 
+        #dun
         leaf_no_split = [not split for split in leaf_split]
         unchanged_leaves = list(compress(leaves, leaf_no_split))
 
@@ -599,7 +571,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
                         tag_rule = x_mpz[rule_index] if new_rule_label == 1 else ~(x_mpz[rule_index]) | mpz(pow(2, ndata))
                         #print("x_mpz",x_mpz)
                         #print("tag_rule",tag_rule)
-                        new_points_cap, new_num_captured = rule_vand(tag, tag_rule)
+                        new_points_cap, new_num_captured = rulef.rule_vand(tag, tag_rule)
                         # print("tag:", tag)
                         # print("tag_rule:", tag_rule)
                         # print("new_points_cap:", new_points_cap)
@@ -607,7 +579,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
 
                         #parent_is_feature_dead =
                         new_leaf = CacheLeaf(ndata, new_rules, y_mpz, z_mpz, new_points_cap, new_num_captured,
-                                             lamb, support, removed_leaf.is_feature_dead.copy())
+                                             support, removed_leaf.is_feature_dead.copy(), obj)
                         leaf_cache[new_rules] = new_leaf
                         new_leaves.append(new_leaf)
                     else:
@@ -626,11 +598,8 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
                     # print("******* new_rules:", new_rules)
 
                     # Lower bound on classification accuracy
-                    # if (new_leaf.num_captured) / ndata <= lamb:
-                    if accu_support == True and (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= lamb:
-
+                    if accu_support == True and obj.calc_acc_supp(new_leaf=new_leaf,ndata=ndata):
                         removed_leaf.is_feature_dead[rule_index] = 1
-
                         flag_increm = True
                         break
 
@@ -651,7 +620,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
             else:
                 tree_cache[sorted_new_tree_rules] = True
 
-            child = CacheTree(leaves=new_tree_leaves, lamb=lamb)
+            child = CacheTree(leaves=new_tree_leaves, obj=obj)
 
             R = child.risk
             # print("child:", child.sorted_leaves())
@@ -665,8 +634,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
                 best_is_cart = False
 
             # generate the new splitleaf for the new tree
-            sl = generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves,
-                                        lamb, R_c, incre_support)
+            sl = generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves, R_c, incre_support, obj)
             # print("sl:", sl)
 
             # A leaf cannot be split if
@@ -705,8 +673,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
 
             for new_leaf_split in new_leaf_splits:
                 # construct the new tree
-                tree_new = Tree(cache_tree=child, ndata=ndata, lamb=lamb,
-                                splitleaf=new_leaf_split, prior_metric=prior_metric)
+                tree_new = Tree(cache_tree=child, ndata=ndata, splitleaf=new_leaf_split, prior_metric=prior_metric, obj=obj)
 
                 # MAX Number of leaves
                 if len(new_leaf_split)+sum(new_leaf_split) > MAX_NLEAVES:
@@ -740,7 +707,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         accu = trainaccu_CART
         leaves_c = 'NA'
         prediction_c = 'NA'
-        get_code(d_c, ['x'+str(i) for i in range(1, nrule+1)], [0, 1])
+        # get_code(d_c, ['x'+str(i) for i in range(1, nrule+1)], [0, 1])
         num_captured = 'NA'
         num_captured_incorrect = 'NA'
         nleaves = nleaves_CART
@@ -774,6 +741,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
     print("COUNT_UNIQLEAVES:", COUNT_UNIQLEAVES)
     print("COUNT_LEAFLOOKUPS:", COUNT_LEAFLOOKUPS)
 
+    print("Objective Function: ", objfunc)
     print("total time: ", totaltime)
     print("lambda: ", lamb)
     print("leaves: ", leaves_c)
@@ -798,17 +766,6 @@ def predict(leaves_c, prediction_c, dic, x, y, best_is_cart, clf):
     :param dic:
     :return:
     """
-
-    if best_is_cart:
-        #print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        yhat = clf.predict(x)
-        accu = clf.score(x, y)
-
-        #print("yhat~~~:", yhat)
-        #print("y~~~:", y)
-
-        return yhat, accu
-
     ndata = x.shape[0]
 
     caps = []
