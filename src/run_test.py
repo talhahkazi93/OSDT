@@ -3,14 +3,7 @@ import pandas as pd
 from osdtr import bbound, predict
 from utils import ObjFunction
 
-# Read in the dataset
-# compas = pd.DataFrame(pd.read_csv('../data/preprocessed/compas-binary.csv',sep=";"))
-# monk1 = pd.DataFrame(pd.read_csv('../data/preprocessed/monk1-train.csv',sep=";"))
-# monk2 = pd.DataFrame(pd.read_csv('../data/preprocessed/monk2-train.csv',sep=";"))
-# monk3 = pd.DataFrame(pd.read_csv('../data/preprocessed/monk3-train.csv',sep=";"))
-# balance = pd.DataFrame(pd.read_csv('../data/preprocessed/balance-scale.csv',sep=";"))
-# tictactoe = pd.DataFrame(pd.read_csv('../data/preprocessed/tic-tac-toe.csv',sep=";"))
-# car = pd.DataFrame(pd.read_csv('../data/preprocessed/car-evaluation.csv',sep=";"))
+
 
 def test_accuracy_onefold(file, lambs, timelimit):
     """
@@ -58,14 +51,25 @@ def test_accuracy_onefold(file, lambs, timelimit):
         # OSDT
         leaves_c, prediction_c, dic, nleaves_OSDT, nrule, ndata, totaltime, time_c, COUNT, C_c, trainaccu_OSDT, best_is_cart, clf =\
             bbound(X_train, y_train, lamb=lamb,support=True, incre_support=True, accu_support=True, equiv_points=True,
-           lookahead=True, lenbound=False, objfunc=ObjFunction.OSDT, prior_metric="curiosity", timelimit=timelimit, init_cart=False)
-
+           lookahead=True, lenbound=False, objfunc=ObjFunction.ExternalPathLength, prior_metric="curiosity", timelimit=timelimit, init_cart=False)
 
         if nleaves_OSDT >= 16:
             break
 
 # lambs1 = [0.1, 0.05, 0.025, 0.01, 0.005, 0.0025]
 
+# Read in the dataset
+compas = '../data/preprocessed/compas-binary.csv'
+monk1 = '../data/preprocessed/monk1-train.csv'
+monk2 = '../data/preprocessed/monk2-train.csv'
+monk3 = '../data/preprocessed/monk3-train.csv'
+balance = '../data/preprocessed/balance-scale.csv'
+tictactoe = '../data/preprocessed/tic-tac-toe.csv'
+car = '../data/preprocessed/car-evaluation.csv'
+
 timelimi1 = 1800
-file = '../data/preprocessed/monk1-train.csv'
-test_accuracy_onefold(file , lambs=[0.005],timelimit=timelimi1)
+datasets = [monk3,balance,tictactoe,car]
+# for file in datasets:
+# # file = '../data/preprocessed/monk1-train.csv'
+#     test_accuracy_onefold(compas , lambs=[0.005],timelimit=timelimi1)
+test_accuracy_onefold(compas , lambs=[0.005],timelimit=timelimi1)

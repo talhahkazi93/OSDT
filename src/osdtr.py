@@ -13,6 +13,9 @@ import pickle
 
 
 class ObjectiveFunc:
+    """
+    Set objective function with their corresponding bounds
+    """
 
     def __init__(self,objfunc,lamb):
         # if objfunc in ['osdt', 'extpl', 'intpl']:
