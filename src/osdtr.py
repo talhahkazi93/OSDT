@@ -8,112 +8,9 @@ from itertools import product, compress
 from gmpy2 import mpz
 from utils import ObjFunction
 from utils import RulesFunctions as rulef
+from utils import OSDT,ExternalPathLength,Internalpathlength
 import sklearn.tree
 import pickle
-
-
-class ObjectiveFunc:
-    """
-    Set objective function with their corresponding bounds
-    """
-
-    def __init__(self,objfunc,lamb):
-        # if objfunc in ['osdt', 'extpl', 'intpl']:
-        #     self.objfunc = objfunc
-        # else:
-        #     raise ValueError('Objective function not found Select from [osdt, extpl, intpl].')
-        self.objfunc = objfunc
-        self.lamb = lamb
-
-    def calc_lookahead(self,R_c,lb,b0,n_removed_leaves,lambbb):
-        lookahead = False
-
-        if self.objfunc == ObjFunction.OSDT or self.objfunc == ObjFunction.InternalPathLength:
-            if lb + b0 + n_removed_leaves * lambbb >= R_c:
-                lookahead = True
-        # elif objfunc == "extpl":
-        elif self.objfunc == ObjFunction.ExternalPathLength:
-            # External Path length
-            if lb + b0 + n_removed_leaves * 2 * lambbb >= R_c:
-                lookahead = True
-
-        return lookahead
-
-    def calc_risk(self,leaves,ext):
-        if self.objfunc == ObjFunction.OSDT:
-            risk = sum([l.loss for l in leaves]) + self.lamb * len(leaves)
-        elif self.objfunc == ObjFunction.ExternalPathLength:
-            #External path length
-            risk = sum([l.loss for l in leaves]) + self.lamb * ext
-        elif self.objfunc == ObjFunction.InternalPathLength:
-            # Internal path length
-            intpl = ext - 2 * (len(leaves) - 1)
-            risk = sum([l.loss for l in leaves]) + self.lamb * intpl
-
-        return risk
-
-    def calc_loss(self, cache_tree, splitleaf,l,ext):
-        if self.objfunc == ObjFunction.OSDT:
-            lb = sum([cache_tree.leaves[i].loss for i in range(l)
-                           if splitleaf[i] == 0]) + self.lamb * l
-        elif self.objfunc == ObjFunction.ExternalPathLength:
-            # #External path length lb
-            lb = sum([cache_tree.leaves[i].loss for i in range(l)
-                           if splitleaf[i] == 0]) + self.lamb * ext
-        elif self.objfunc == ObjFunction.InternalPathLength:
-            # Internal path length
-            intpl = ext - 2 * (l - 1)
-            lb = sum([cache_tree.leaves[i].loss for i in range(l)
-                           if splitleaf[i] == 0]) + self.lamb * intpl
-
-        return lb
-
-    def calc_leaf_supp(self,loss,len):
-        if self.objfunc == ObjFunction.OSDT:
-            # self.is_dead = self.num_captured / len(y) / 2 <= lamb
-            # Osdt leaf support
-            is_dead = loss <= self.lamb
-        elif self.objfunc == ObjFunction.ExternalPathLength:
-            # External path length support bound
-            is_dead = loss <= 2 * self.lamb * (len + 2)
-        elif self.objfunc == ObjFunction.InternalPathLength:
-            # Internal path length
-            is_dead = loss <= 2 * self.lamb * (len)
-
-        return is_dead
-
-    def calc_incrm_acc(self,new_leaves,i):
-
-        if self.objfunc == ObjFunction.OSDT:
-            calcobj = self.lamb
-        elif self.objfunc == ObjFunction.ExternalPathLength:
-            # External path length incremental support
-            calcobj = self.lamb * (new_leaves[i].len + 2)
-        elif self.objfunc == ObjFunction.InternalPathLength:
-            # Internal path length
-            calcobj = self.lamb * (new_leaves[i].len)
-
-        return calcobj
-
-    def calc_acc_supp(self,new_leaf,ndata):
-
-        validsupp = False
-
-        if self.objfunc == ObjFunction.OSDT:
-            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb:
-                validsupp = True
-
-        elif self.objfunc == ObjFunction.ExternalPathLength:
-            # External path length
-            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len + 1):
-                validsupp = True
-
-        elif self.objfunc == ObjFunction.InternalPathLength:
-            # Internal path length
-            if (new_leaf.num_captured - new_leaf.num_captured_incorrect) / ndata <= self.lamb * (new_leaf.len):
-                validsupp = True
-
-        return validsupp
 
 
 class CacheTree:
@@ -432,8 +329,15 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
     leaf_cache = {}  # cache leaves
     tree_cache = {}  # cache trees
 
-    # Intinalizing opjective function
-    obj = ObjectiveFunc(objfunc=objfunc,lamb=lamb)
+    # # Intinalizing opjective function
+    # obj = ObjectiveFunc(objfunc=objfunc,lamb=lamb)
+
+    if objfunc == ObjFunction.OSDT:
+        obj = OSDT(lamb=lamb)
+    elif objfunc == ObjFunction.ExternalPathLength:
+        obj = ExternalPathLength(lamb=lamb)
+    elif objfunc == ObjFunction.InternalPathLength:
+        obj = Internalpathlength(lamb=lamb)
 
     # initialize the queue to include just empty root
     queue = []

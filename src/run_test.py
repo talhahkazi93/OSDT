@@ -51,7 +51,7 @@ def test_accuracy_onefold(file, lambs, timelimit):
         # OSDT
         leaves_c, prediction_c, dic, nleaves_OSDT, nrule, ndata, totaltime, time_c, COUNT, C_c, trainaccu_OSDT, best_is_cart, clf =\
             bbound(X_train, y_train, lamb=lamb,support=True, incre_support=True, accu_support=True, equiv_points=True,
-           lookahead=True, lenbound=False, objfunc=ObjFunction.ExternalPathLength, prior_metric="curiosity", timelimit=timelimit, init_cart=False)
+           lookahead=True, lenbound=False, objfunc=ObjFunction.InternalPathLength, prior_metric="curiosity", timelimit=timelimit, init_cart=False)
 
         if nleaves_OSDT >= 16:
             break
