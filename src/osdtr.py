@@ -8,10 +8,12 @@ from itertools import product, compress
 from gmpy2 import mpz
 from utils import ObjFunction
 from utils import RulesFunctions as rulef
-from utils import OSDT,ExternalPathLength,Internalpathlength
+from utils import OSDT,ExternalPathLength,Internalpathlength,Weightedexternalpathlength
 import sklearn.tree
 import pickle
-
+import ntpath
+import os
+import csv
 
 class CacheTree:
     """
@@ -19,19 +21,17 @@ class CacheTree:
     leaves: a 2-d tuple to encode the leaves
     num_captured: a list to record number of data captured by the leaves
     """
-
     def __init__(self, leaves, obj):
         self.leaves = leaves
         self.rules = [l.rules for l in leaves]
         rulelen = [len(val) for val in self.rules]
-        self.ext= sum(rulelen)
 
-        self.risk = obj.calc_risk(leaves=self.leaves,ext=self.ext)
+        self.ext= sum(rulelen)
+        self.risk = obj.calc_risk(leaves=self.leaves)
 
     def sorted_leaves(self):
         # Used by the cache
         return tuple(sorted(leaf.rules for leaf in self.leaves))
-
 
 class Tree:
     """
@@ -48,11 +48,10 @@ class Tree:
 
         leaves = cache_tree.leaves
         l = len(leaves)
-        self.rules = [l.rules for l in leaves]
-        rulelen = [len(val) for val in self.rules]
-        self.ext = sum(rulelen)
+        self.leafsup = sum([l.support_val for l in leaves])
+        # print('///////////////LEAFSuPPOrt///////////////'+str(self.leafsup))
 
-        self.lb = obj.calc_loss(cache_tree=cache_tree,splitleaf=splitleaf,l=l,ext=self.ext)
+        self.lb = obj.calc_loss(cache_tree=cache_tree,splitleaf=splitleaf)
 
         # which metrics to use for the priority queue
         if leaves[0].num_captured == ndata:
@@ -99,12 +98,10 @@ class Tree:
         # define <, which will be used in the priority queue
         return self.metric < other.metric
 
-
 class CacheLeaf:
     """
     A data structure to cache every single leaf (symmetry aware)
     """
-
     def __init__(self, ndata, rules, y_mpz, z_mpz, points_cap, num_captured, support, is_feature_dead, obj):
         self.rules = rules
         self.points_cap = points_cap
@@ -133,12 +130,19 @@ class CacheLeaf:
 
         self.loss = float(self.num_captured_incorrect) / ndata
 
+        self.support_val = self.num_captured / ndata
+
+        print("/////loss//////"+str(self.loss))
+        print("/////supportval//////" + str(self.support_val))
+
+        # leaf weighted external path length
+        self.leaf_we = self.len * self.support_val
+
         # Lower bound on leaf support
         if support:
-            self.is_dead = obj.calc_leaf_supp(len=self.len,loss=self.loss)
+            self.is_dead = obj.calc_leaf_supp(leaf_len=self.len,support=self.support_val)
         else:
-            self.is_dead = 0
-
+            self.is_dead = False
 
 def log(tic, lines, COUNT_POP, COUNT, queue, metric, R_c, tree_old, tree_new, sorted_new_tree_rules):
     "log"
@@ -172,7 +176,6 @@ def log(tic, lines, COUNT_POP, COUNT, queue, metric, R_c, tree_old, tree_new, so
                      the_queue
                      ])
     lines.append(line)
-
 
 def generate_new_splitleaf(unchanged_leaves, removed_leaves, new_leaves,
                            R_c, incre_support, obj):
@@ -265,7 +268,7 @@ def gini_reduction(x_mpz, y_mpz, ndata, rule_idx, points_cap=None):
 def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=float('Inf'), niter=float('Inf'), logon=False,
            support=True, incre_support=True, accu_support=True, equiv_points=True,
            lookahead=True, lenbound=True, objfunc=ObjFunction.ExternalPathLength, R_c0 = 1, timelimit=float('Inf'), init_cart = True,
-           saveTree = False, readTree = False):
+           saveTree = False, readTree = False,file=None):
     """
     An implementation of Algorithm
     ## multiple copies of tree
@@ -338,6 +341,8 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         obj = ExternalPathLength(lamb=lamb)
     elif objfunc == ObjFunction.InternalPathLength:
         obj = Internalpathlength(lamb=lamb)
+    elif objfunc == ObjFunction.WeightedExternalPathLength:
+        obj = Weightedexternalpathlength(lamb=lamb)
 
     # initialize the queue to include just empty root
     queue = []
@@ -383,7 +388,8 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
     leaf_cache[()] = root_leaf
 
     COUNT = 0  # count the total number of trees in the queue
-
+    C_c = 0
+    time_c = 0
     COUNT_POP = 0
 
     COUNT_UNIQLEAVES = 0
@@ -421,7 +427,9 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         # print("R",tree.lbound[0]+(tree.num_captured_incorrect[0])/len(y))
 
         leaf_split = tree.splitleaf
+
         removed_leaves = list(compress(leaves, leaf_split))
+
         old_tree_length = len(leaf_split)
         new_tree_length = len(leaf_split) + sum(leaf_split)
 
@@ -435,12 +443,17 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
         n_unchanged_leaves = old_tree_length - n_removed_leaves
 
         # equivalent points bound combined with the lookahead bound
+        supp = sum([l.support_val for l in removed_leaves])
         lb = tree.lb
         b0 = sum([leaf.B0 for leaf in removed_leaves]) if equiv_points else 0
         lambbb = lamb if lookahead else 0
 
-        if obj.calc_lookahead(R_c=R_c,lb=lb,b0=b0,n_removed_leaves=n_removed_leaves,lambbb=lambbb):
-            continue
+        if objfunc == ObjFunction.WeightedExternalPathLength:
+            if obj.calc_lookahead(R_c=R_c,lb=lb,b0=b0,n_removed_leaves=n_removed_leaves,lamb=lambbb,support=supp):
+                continue
+        else:
+            if obj.calc_lookahead(R_c=R_c,lb=lb,b0=b0,n_removed_leaves=n_removed_leaves,lamb=lambbb):
+                continue
 
         #dun
         leaf_no_split = [not split for split in leaf_split]
@@ -490,7 +503,6 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
                         leaf_cache[new_rules] = new_leaf
                         new_leaves.append(new_leaf)
                     else:
-
                         COUNT_LEAFLOOKUPS = COUNT_LEAFLOOKUPS+1
 
                         new_leaf = leaf_cache[new_rules]
@@ -637,31 +649,68 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
             f.write('%s\n' % ";".join(header))
             f.write('\n'.join(lines))
 
-    print(">>> log:", logon)
-    print(">>> support bound:", support)
-    print(">>> accu_support:", accu_support)
-    print(">>> accurate support bound:", incre_support)
-    print(">>> equiv points bound:", equiv_points)
-    print(">>> lookahead bound:", lookahead)
-    print("prior_metric=", prior_metric)
+    # Write results to file
+    print(">>> dataset", ntpath.basename(file))
+    headers = []
+    curpath = os.path.abspath(os.curdir)
+    # print(ntpath.basename(file))
+    path = curpath+"\\results\\"+str(objfunc)
+    fname = "_".join([path,str(lamb),".csv"])
 
-    print("COUNT_UNIQLEAVES:", COUNT_UNIQLEAVES)
-    print("COUNT_LEAFLOOKUPS:", COUNT_LEAFLOOKUPS)
+    header = ['dataset','objective_function','lambda','total_time','Accuracy','leaves','num_captured','num_captured_incorrect',
+              'prediction','Objective','TOTAL_COUNT','COUNT_UNIQLEAVES','COUNT_LEAFLOOKUPS',
+              'COUNT_of_the_best_tree','time_to_achieved_best tree']
+    try:
+        line = [ntpath.basename(file), str(objfunc), str(lamb), str(totaltime), str(accu), str(leaves_c),
+                str(num_captured), str(num_captured_incorrect),
+                str(prediction_c), str(R_c), str(COUNT), str(COUNT_UNIQLEAVES), str(COUNT_LEAFLOOKUPS), str(C_c),
+                str(time_c)]
 
-    print("Objective Function: ", objfunc)
-    print("total time: ", totaltime)
-    print("lambda: ", lamb)
+    except Exception as err:
+        print("Uh oh, please send me this message: '" + err + "'")
+        line = [ntpath.basename(file), str(objfunc), str(lamb), str(totaltime), str(accu), str(leaves_c),
+                str(num_captured), str(num_captured_incorrect),
+                str(prediction_c), str(R_c), str(COUNT), str(COUNT_UNIQLEAVES), str(COUNT_LEAFLOOKUPS), str(0),
+                str(0)]
+
+    try:
+        if os.path.exists(fname):
+            append_write = 'a'  # append if already exists
+        else:
+            append_write = 'w'  # make a new file if not
+
+        with open(fname, append_write, newline='') as f:
+            writer = csv.writer(f, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+            if append_write == 'w':
+                writer.writerow(header)
+            writer.writerow(line)
+    except Exception as err:
+        print("Uh oh, please send me this message: '" + err + "'")
+
+    # print(">>> support bound:", support)
+    # print(">>> accu_support:", accu_support)
+    # print(">>> accurate support bound:", incre_support)
+    # print(">>> equiv points bound:", equiv_points)
+    # print(">>> lookahead bound:", lookahead)
+    # print("prior_metric=", prior_metric)
+    #
+    # print("COUNT_UNIQLEAVES:", COUNT_UNIQLEAVES)
+    # print("COUNT_LEAFLOOKUPS:", COUNT_LEAFLOOKUPS)
+    #
+    # print("Objective Function: ", objfunc)
+    # print("total time: ", totaltime)
+    # print("lambda: ", lamb)
     print("leaves: ", leaves_c)
     print("num_captured: ", num_captured)
     print("num_captured_incorrect: ", num_captured_incorrect)
-    # print("lbound: ", d_c.cache_tree.lbound)
-    # print("d_c.num_captured: ", [leaf.num_captured for leaf in d_c.cache_tree.leaves])
+    # # print("lbound: ", d_c.cache_tree.lbound)
+    # # print("d_c.num_captured: ", [leaf.num_captured for leaf in d_c.cache_tree.leaves])
     print("prediction: ", prediction_c)
-    print("Objective: ", R_c)
+    # print("Objective: ", R_c)
     print("Accuracy: ", accu)
-    print("COUNT of the best tree: ", C_c)
-    print("time when the best tree is achieved: ", time_c)
-    print("TOTAL COUNT: ", COUNT)
+    # print("COUNT of the best tree: ", C_c)
+    # print("time when the best tree is achieved: ", time_c)
+    # print("TOTAL COUNT: ", COUNT)
 
     return leaves_c, prediction_c, dic, nleaves, nrule, ndata, totaltime, time_c, COUNT, C_c, accu, best_is_cart, clf
 
