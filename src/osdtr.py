@@ -131,9 +131,9 @@ class CacheLeaf:
         self.loss = float(self.num_captured_incorrect) / ndata
 
         self.support_val = self.num_captured / ndata
-
-        print("/////loss//////"+str(self.loss))
-        print("/////supportval//////" + str(self.support_val))
+        # 
+        # print("/////loss//////"+str(self.loss))
+        # print("/////supportval//////" + str(self.support_val))
 
         # leaf weighted external path length
         self.leaf_we = self.len * self.support_val
