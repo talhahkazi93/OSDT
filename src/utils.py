@@ -237,10 +237,10 @@ class Weightedexternalpathlength(ObjFuncInterface):
                   if splitleaf[i] == 0]) + self.lamb * extpl
         return lb
 
-    def calc_leaf_supp(self, loss, leaf_len):
+    def calc_leaf_supp(self, support, leaf_len):
         # Weighted External path length
         # ommit lamdha<=1/2
-        # is_dead = loss <= self.lamb
+        # is_dead = support <= self.lamb
         is_dead = False
         return is_dead
 
@@ -263,6 +263,13 @@ class ObjFunction(Enum):
     ExternalPathLength = auto()
     InternalPathLength = auto()
     WeightedExternalPathLength = auto()
+
+class Encodings(Enum):
+    # Options of possible encoding defined
+    AsymEnc = auto()
+    NumBasedEnc = auto()
+    OsdtEnc = auto()
+    GenericEnc = auto()
 
 
 class RulesFunctions:

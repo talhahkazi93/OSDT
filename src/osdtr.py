@@ -131,16 +131,13 @@ class CacheLeaf:
         self.loss = float(self.num_captured_incorrect) / ndata
 
         self.support_val = self.num_captured / ndata
-        # 
-        # print("/////loss//////"+str(self.loss))
-        # print("/////supportval//////" + str(self.support_val))
 
         # leaf weighted external path length
         self.leaf_we = self.len * self.support_val
 
         # Lower bound on leaf support
         if support:
-            self.is_dead = obj.calc_leaf_supp(leaf_len=self.len,support=self.support_val)
+            self.is_dead = obj.calc_leaf_supp(leaf_len=self.len,support=self.loss)
         else:
             self.is_dead = False
 
@@ -267,7 +264,7 @@ def gini_reduction(x_mpz, y_mpz, ndata, rule_idx, points_cap=None):
 
 def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=float('Inf'), niter=float('Inf'), logon=False,
            support=True, incre_support=True, accu_support=True, equiv_points=True,
-           lookahead=True, lenbound=True, objfunc=ObjFunction.ExternalPathLength, R_c0 = 1, timelimit=float('Inf'), init_cart = True,
+           lookahead=True, lenbound=True, objfunc=ObjFunction.ExternalPathLength, R_c0 = 1, timelimit=float('Inf'), init_cart = False,
            saveTree = False, readTree = False,file=None):
     """
     An implementation of Algorithm
@@ -516,6 +513,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
                     # print("******* old_rules:", removed_leaf.rules)
                     # print("******* new_rules:", new_rules)
 
+
                     # Lower bound on classification accuracy
                     if accu_support == True and obj.calc_acc_supp(new_leaf=new_leaf,ndata=ndata):
                         removed_leaf.is_feature_dead[rule_index] = 1
@@ -611,11 +609,23 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
     totaltime = time.time() - tic
 
     if not best_is_cart:
-
-        accu = 1-(R_c-lamb*len(d_c.leaves))
-
+        accu = 0
         leaves_c = [leaf.rules for leaf in d_c.leaves]
         prediction_c = [leaf.prediction for leaf in d_c.leaves]
+
+        rulelen = [len(val) for val in leaves_c]
+        ext = sum(rulelen)
+        intpl = ext - 2 * (len(d_c.leaves) - 1)
+        extpl = sum([leaf.leaf_we for leaf in d_c.leaves])
+
+        if objfunc == ObjFunction.OSDT:
+            accu = 1 - (R_c-lamb*len(d_c.leaves))
+        elif objfunc == ObjFunction.ExternalPathLength:
+            accu = 1 - (R_c - lamb * ext)
+        elif objfunc == ObjFunction.InternalPathLength:
+            accu = 1 - (R_c - lamb * intpl)
+        elif objfunc == ObjFunction.WeightedExternalPathLength:
+            accu = 1 - (R_c - lamb * extpl)
 
         num_captured = [leaf.num_captured for leaf in d_c.leaves]
 
@@ -685,7 +695,7 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
                 writer.writerow(header)
             writer.writerow(line)
     except Exception as err:
-        print("Uh oh, please send me this message: '" + err + "'")
+        print("Uh oh, please send me this message: '" + str(err) + "'")
 
     # print(">>> support bound:", support)
     # print(">>> accu_support:", accu_support)
@@ -698,19 +708,20 @@ def bbound(x, y, lamb, prior_metric=None, MAXDEPTH=float('Inf'), MAX_NLEAVES=flo
     # print("COUNT_LEAFLOOKUPS:", COUNT_LEAFLOOKUPS)
     #
     # print("Objective Function: ", objfunc)
-    # print("total time: ", totaltime)
-    # print("lambda: ", lamb)
+
+    print("total time: ", totaltime)
+    print("lambda: ", lamb)
     print("leaves: ", leaves_c)
     print("num_captured: ", num_captured)
     print("num_captured_incorrect: ", num_captured_incorrect)
     # # print("lbound: ", d_c.cache_tree.lbound)
     # # print("d_c.num_captured: ", [leaf.num_captured for leaf in d_c.cache_tree.leaves])
     print("prediction: ", prediction_c)
-    # print("Objective: ", R_c)
+    print("Objective: ", R_c)
     print("Accuracy: ", accu)
-    # print("COUNT of the best tree: ", C_c)
-    # print("time when the best tree is achieved: ", time_c)
-    # print("TOTAL COUNT: ", COUNT)
+    print("COUNT of the best tree: ", C_c)
+    print("time when the best tree is achieved: ", time_c)
+    print("TOTAL COUNT: ", COUNT)
 
     return leaves_c, prediction_c, dic, nleaves, nrule, ndata, totaltime, time_c, COUNT, C_c, accu, best_is_cart, clf
 

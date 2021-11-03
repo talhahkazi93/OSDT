@@ -6,6 +6,7 @@ import category_encoders as ce
 from enum import Enum, auto
 import os
 import pathlib
+import numpy as np
 
 class Encodings(Enum):
     # Options of encoding defined
@@ -41,14 +42,21 @@ def osdt_enc(ds):
 
 def Asym_enc(ds):
     # modified Asymetric encoding
-    de = pd.get_dummies(data=ds, drop_first=False)
+    # de = pd.get_dummies(data=ds,columns=['a1', 'a2', 'a3', 'a4', 'a5', 'a6'], drop_first=False)
+    # de = pd.get_dummies(data=ds,columns=['top-left-square', 'top-middle-square', 'top-right-square', 'middle-left-square',
+    #                                      'middle-middle-square', 'middle-right-square', 'bottom-left-square',
+    #                                      'bottom-middle-square', 'bottom-right-square'], drop_first=False)
 
+    # classname = ds.pop('Class')
+    de = pd.get_dummies(data=ds,columns=[], drop_first=False)
+    # print(len(de.columns))
+    # de.insert(len(de.columns), 'class', classname)
     return de
 
 
 def gneric_encoding(ds):
     # # Default binary encoder
-    encoder = ce.BinaryEncoder(cols=ds, return_df=True)
+    encoder = ce.BinaryEncoder(cols=[], return_df=True)
     data_encoded = encoder.fit_transform(ds)
 
     return data_encoded
@@ -101,32 +109,47 @@ def converter(dataset, selection, idCol):
     if idCol == 'last':
         ds = dataset.iloc[:, :-1]
     # Second Column Remove
-    else:
+    elif idCol == 'first':
         ds = dataset.iloc[:, 1:]
-    # ds = dataset
+    else:
+        ds = dataset
+    # cols = list(ds.columns)
+    # # cols = [cols[-1]] + cols[:-1]
+    # ds = ds[['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'class']]
+    # ds = ds.astype(str)
 
     if selection == Encodings.ModifiedAsymmetric:
         de = osdt_enc(ds)
     elif selection == Encodings.Asymmetric:
         de = Asym_enc(ds)
+        # de = de[['a1_1', 'a1_2', 'a1_3','a2_1', 'a2_2', 'a2_3', 'a3_1', 'a3_2', 'a4_1','a1_2', 'a4_3', 'a5_1', 'a5_2','a5_3', 'a5_4', 'a6_1', 'a6_2', 'class']]
     elif selection == Encodings.NumberBased:
         de = num_encoding(ds)
     elif selection == Encodings.GenericEncoding:
         de = gneric_encoding(ds)
-
     return de
 
 
-def encode(filename='../data/monks-1.test', idCol='first', encodingtype=Encodings.NumberBased):
+def encode(filename='../data/monks-1.test', idCol=None, encodingtype=Encodings.NumberBased):
     file = filename
 
-    idCol = 'last'
+    # idCol = 'last'
+    # idCol = 'first'
 
     if file.endswith('.csv'):
         ds = pd.DataFrame(pd.read_csv(file, sep=";"))
     else:
-        ds = pd.DataFrame(pd.read_csv(file, sep=" "))
+        ds = pd.DataFrame(pd.read_csv(file, sep=","))
 
+    # for (index, val) in enumerate(ds['class']):
+    #     if val == 'unacc':
+    #         ds.loc[index, 'class'] = 0
+    #     elif val == 'good':
+    #         ds.loc[index, 'class'] = 1
+    #     else:
+    #         print('wtf is this'+str(index))
+    #
+    # ds.to_csv("car.csv", index=False, sep=';')
     ds = converter(ds, encodingtype, idCol)
 
     return ds
@@ -156,13 +179,11 @@ def writefile(filename, dataset, encodingtype):
     #     print(col)
     # print(dataset)
 
-
 def main():
-    filename = '../data/datasets/Original/monks-1.train'
-    encod = Encodings.NumberBased
+    filename = '../data/datasets/Generic_enc/car.csv'
+    encod = Encodings.GenericEncoding
     ds = encode(filename=filename, encodingtype=encod)
     writefile(filename, ds, encod)
-
 
 if __name__ == "__main__":
     main()
