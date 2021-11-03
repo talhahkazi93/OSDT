@@ -10,9 +10,21 @@ Cynthia Rudin, and Margo Seltzer. We uses differnt objective function to find th
 * [gmpy2](https://pypi.org/project/gmpy2/#files) (GMP/MPIR, MPFR, and MPC interface to Python 2.6+ and 3.x)
 
 ### Main function
-The main function is the `bbound()` function in `osdt.py`.
+The main function is the `bbound()` function in `osdtr.py`.
 
 ### Arguments
+**[objective_function]** Select objective function with sparsity panelty from.
+  * Use `Encodings.AsymEnc` for asymmetric binary encoding scheme.
+  * Use `Encodings.GenericEnc`  for generic binary encoding scheme.
+  * Use `Encodings.NumBasedEnc`  for number-based binary encoding scheme.
+  * Use `Encodings.OsdtEnc`  for one-hot(modified-asymmetric) binary encoding scheme.
+
+**[encoding]** Select encoding scheme to convert dataset into binary from.
+  * Use `ObjFunction.OSDT` for number of leaves as sparsity panelty.
+  * Use `ObjFunction.ExternalPathLength` for External path length as sparsity panelty.
+  * Use `ObjFunction.InternalPathLength` for Internal path length as sparsity panelty.
+  * Use `ObjFunction.WeightedExternalPathLength` for Weighted external path length as sparsity panelty.
+
 
 **[x]** The features of the training data.
 
@@ -22,18 +34,13 @@ The main function is the `bbound()` function in `osdt.py`.
 
 **[prior_metric]** The scheduling policy.
 
-* Use `curiosity` to prioritize by curiosity (see *Section 5* of our paper).
-* Use `bound` to prioritize by the lower bound.
-* Use `objective` to prioritize by the objective.
-* Use `FIFO` for first-in-first-out search.
+* Use `curiosity` to prioritize by curiosity.
 
 **[MAXDEPTH]** Maximum depth of the tree. Default value is `float('Inf')`.
 
 **[MAX_NLEAVES]** Maximum number of leaves of the tree. Default value is `float('Inf')`.
 
 **[niter]** Maximum number of tree evaluations. Default value is `float('Inf')`.
-
-**[logon]** Record relevant trees and values during the execution. Default if `False`.
 
 **[support]** Turn on `Lower bound on leaf support`. Default is `True`.
 
@@ -45,20 +52,17 @@ The main function is the `bbound()` function in `osdt.py`.
 
 **[lookahead]** Turn on `Lookahead bound`. Default is `True`.
 
-**[lenbound]** Turn on `Prefix-specific upper bound on number of leaves`. Default is `True`.
-
 **[timelimit]** Time limit on the running time. Default is `True`.
 
-**[init_cart]** Initialize with CART. Default is `True`.
 
 ### Example test code
 
-We provide our test code in `test_accuracy.py`.
+We provide our test code in `run_test.py`.
 
 ### Dataset
 
-See `data/preprocessed/`.
+See `data/datasets/`.
 
 We used 7 datasets: Five of them are from the UCI Machine Learning Repository (tic-tac-toc, car evaluation, monk1, monk2, monk3). 
 The other two datasets are the ProPublica recidivism data set and the Fair Isaac (FICO) credit risk datasets. 
-We predict which individuals are arrested within two years of release (`{N = 7,215}`) on the recidivism data set and whether an individual will default on a loan for the FICO dataset. 
+We predict which individuals are arrested within two years of release (`{N = 7,215}`) on the recidivism data set and whether an individual will default on a loan for the FICO dataset. There are also diffrent encoding styles for the five UCI datasets corresponding to their respective folders. 
